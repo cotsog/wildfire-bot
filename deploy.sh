@@ -26,10 +26,12 @@ deploy() {
 
 AWS_ROLE=$(read_var AWS_ROLE .env)
 AIRNOW_API_KEYS=$(read_var AIRNOW_API_KEYS .env)
-WILDFIRE_API_URL=$(read_var WILDFIRE_API_URL .env)
+AIR_QUALITY_API_URL=$(read_var AIR_QUALITY_API_URL .env)
 DYNAMODB_ENDPOINT=$(read_var DYNAMODB_ENDPOINT .env)
 DYNAMODB_REGION=$(read_var DYNAMODB_REGION .env)
 DYNAMODB_AQI_TABLE=$(read_var DYNAMODB_AQI_TABLE .env)
+TRAVIS_E2E_REPO=$(read_var TRAVIS_E2E_REPO .env)
+TRAVIS_ACCESS_TOKEN=$(read_var TRAVIS_ACCESS_TOKEN .env)
 
 ###########################################################
 # Initialize AWS environment
@@ -45,29 +47,13 @@ fi
 # Cleanup and rebuild artifacts past builds
 ###########################################################
 
-rm Wildfire_*.zip
+rm AirQuality_*.zip
 
 mkdir build
 cp -R lambdas/aqi_GET/* build
 cp -R lib/* build
 cd build
-zip -X -r ../Wildfire_aqi_GET.zip *
-cd ..
-rm -rf build
-
-mkdir build
-cp -R lambdas/evacuation_GET/* build
-cp -R lib/* build
-cd build
-zip -X -r ../Wildfire_evacuation_GET.zip *
-cd ..
-rm -rf build
-
-mkdir build
-cp -R lambdas/fire_GET/* build
-cp -R lib/* build
-cd build
-zip -X -r ../Wildfire_fire_GET.zip *
+zip -X -r ../AirQuality_aqi_GET.zip *
 cd ..
 rm -rf build
 
@@ -75,7 +61,7 @@ mkdir build
 cp -R lambdas/inbound_POST/* build
 cp -R lib/* build
 cd build
-zip -X -r ../Wildfire_inbound_POST.zip *
+zip -X -r ../AirQuality_inbound_POST.zip *
 cd ..
 rm -rf build
 
@@ -83,22 +69,32 @@ rm -rf build
 # Deploy Lambdas
 ###########################################################
 
-LAMBDA_NAME=Wildfire_aqi_GET
+LAMBDA_NAME=AirQuality_aqi_GET
 LAMBDA_TIMEOUT=10
 ENV_VARS='{"Variables":{"AIRNOW_API_KEYS":"'$AIRNOW_API_KEYS'","DYNAMODB_ENDPOINT":"'$DYNAMODB_ENDPOINT'","DYNAMODB_REGION":"'$DYNAMODB_REGION'","DYNAMODB_AQI_TABLE":"'$DYNAMODB_AQI_TABLE'"}}'
 deploy $LAMBDA_NAME $LAMBDA_TIMEOUT $ENV_VARS
 
-LAMBDA_NAME=Wildfire_evacuation_GET
-LAMBDA_TIMEOUT=10
-ENV_VARS='{"Variables":{}}'
-deploy $LAMBDA_NAME $LAMBDA_TIMEOUT $ENV_VARS
-
-LAMBDA_NAME=Wildfire_fire_GET
-LAMBDA_TIMEOUT=10
-ENV_VARS='{"Variables":{}}'
-deploy $LAMBDA_NAME $LAMBDA_TIMEOUT $ENV_VARS
-
-LAMBDA_NAME=Wildfire_inbound_POST
+LAMBDA_NAME=AirQuality_inbound_POST
 LAMBDA_TIMEOUT=15
-ENV_VARS='{"Variables":{"WILDFIRE_API_URL":"'$WILDFIRE_API_URL'"}}'
+ENV_VARS='{"Variables":{"AIR_QUALITY_API_URL":"'$AIR_QUALITY_API_URL'"}}'
 deploy $LAMBDA_NAME $LAMBDA_TIMEOUT $ENV_VARS
+
+###########################################################
+# Trigger E2E Tests
+###########################################################
+
+if [ ! -z "$TRAVIS_ACCESS_TOKEN" ] && [ ! -z "$TRAVIS_E2E_REPO" ];
+then
+  body='{
+  "request": {
+  "branch":"master"
+  }}'
+
+  curl -s -X POST \
+     -H "Content-Type: application/json" \
+     -H "Accept: application/json" \
+     -H "Travis-API-Version: 3" \
+     -H "Authorization: token $TRAVIS_ACCESS_TOKEN" \
+     -d "$body" \
+     https://api.travis-ci.org/repo/$TRAVIS_E2E_REPO/requests
+fi

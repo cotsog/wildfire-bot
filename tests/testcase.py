@@ -8,8 +8,6 @@ import decimal
 
 from moto import mock_dynamodb2
 from lambdas.aqi_GET import lambda_function as aqi_route
-from lambdas.fire_GET import lambda_function as fire_route
-from lambdas.evacuation_GET import lambda_function as evacuation_route
 
 def decimal_default(obj):
     if isinstance(obj, decimal.Decimal):
@@ -18,7 +16,7 @@ def decimal_default(obj):
 
 class TestCase(unittest.TestCase):
 
-    def given_dyanmo_table_exists(self):
+    def given_dynamo_table_exists(self):
         dynamodb = boto3.resource("dynamodb", os.environ.get("DYNAMODB_REGION"))
 
         table = dynamodb.create_table(
@@ -51,33 +49,9 @@ class TestCase(unittest.TestCase):
 
             return (200, {}, json.dumps(aqi_route.lambda_handler(event, {}), default=decimal_default))
 
-        def _fire_request_callback(request):
-            parsed = urlparse.urlparse(request.url)
-            event = {
-                "zipCode": urlparse.parse_qs(parsed.query)["zipCode"][0]
-            }
-
-            return (200, {}, json.dumps(fire_route.lambda_handler(event, {}), default=decimal_default))
-
-        def _evacuation_request_callback(request):
-            parsed = urlparse.urlparse(request.url)
-            event = {
-                "zipCode": urlparse.parse_qs(parsed.query)["zipCode"][0]
-            }
-
-            return (200, {}, json.dumps(evacuation_route.lambda_handler(event, {}), default=decimal_default))
-
         responses.add_callback(
-            responses.GET, "{}/aqi".format(os.environ.get("WILDFIRE_API_URL")),
+            responses.GET, "{}/aqi".format(os.environ.get("AIR_QUALITY_API_URL").lower()),
             callback=_aqi_request_callback
-        )
-        responses.add_callback(
-            responses.GET, "{}/fire".format(os.environ.get("WILDFIRE_API_URL")),
-            callback=_fire_request_callback
-        )
-        responses.add_callback(
-            responses.GET, "{}/evacuation".format(os.environ.get("WILDFIRE_API_URL")),
-            callback=_evacuation_request_callback
         )
 
     def given_airnow_routes_mocked(self):
@@ -111,6 +85,24 @@ class TestCase(unittest.TestCase):
         responses.add_callback(
             responses.GET, "https://airnow.gov/index.cfm",
             callback=_airnow_request_callback
+        )
+
+    def given_airnow_api_server_error(self):
+        def _airnow_api_request_callback(request):
+            return (500, {}, "Internal Server Error")
+
+        responses.add_callback(
+            responses.GET, "http://www.airnowapi.org/aq/observation/zipCode/current/",
+            callback=_airnow_api_request_callback
+        )
+
+    def given_airnow_api_bad_response(self):
+        def _airnow_api_request_callback(request):
+            return (200, {}, "<WebServiceError><Message>Invalid API key</Message></WebServiceError>")
+
+        responses.add_callback(
+            responses.GET, "http://www.airnowapi.org/aq/observation/zipCode/current/",
+            callback=_airnow_api_request_callback
         )
 
     def load_resource(self, filename):
